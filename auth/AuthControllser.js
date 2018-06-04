@@ -47,7 +47,13 @@ router.post('/register', (req, res) => {
         const token = jwt.sign({ id: uid }, config.secret, {
           expiresIn: 86400
         });
-        res.status(200).send({ auth: true, token: token });
+        res
+          .status(200)
+          .send({
+            auth: true,
+            token: token,
+            user: { name: req.body.name, email: req.body.email, uid: uid }
+          });
       }
     );
   } catch (err) {
@@ -61,7 +67,7 @@ router.post('/register', (req, res) => {
 router.post('/login', (req, res) => {
   // console.log(req.body);
   db.query(
-    'SELECT id, email, password, uid FROM users WHERE email = ? LIMIT 1',
+    'SELECT id, email, name, password, uid FROM users WHERE email = ? LIMIT 1',
     req.body.email,
     (err, user) => {
       if (err)
@@ -77,7 +83,11 @@ router.post('/login', (req, res) => {
       const token = jwt.sign({ id: user[0].uid }, config.secret, {
         expiresIn: 86400
       });
-      res.status(200).send({ auth: true, token: token });
+      res.status(200).send({
+        auth: true,
+        token: token,
+        user: { name: user[0].name, email: user[0].email, uid: user[0].uid }
+      });
     }
   );
 });
