@@ -15,15 +15,16 @@ router.use(bodyParser.json());
 
 router.post('/save', verifyToken, (req, res) => {
   //update if uid exists, or add new schedule.
-
+  console.log(req.body);
   if (req.body.uid) {
     db.query(
-      `UPDATE schedules SET title = ?, description = ?, location = ?, datetime = ?, updated_at = NOW() WHERE uid = ?`,
+      `UPDATE schedules SET title = ?, description = ?, location = ?, datetime = ?, status = ?, updated_at = NOW() WHERE uid = ?`,
       [
         req.body.title,
         req.body.description,
         req.body.location,
         req.body.datetime,
+        req.body.status,
         req.body.uid
       ],
       (err, result) => {
@@ -65,13 +66,16 @@ router.post('/save', verifyToken, (req, res) => {
 });
 
 //show all schedule/archive of specific user
-router.post('/show', verifyToken, (req, res) => {
-  // const status = req.body.status === 'archive' ? '!=' : '=';
+router.get('/show', verifyToken, (req, res) => {
   db.query(
-    `SELECT uid, title, description, location, datetime, status, created_at FROM schedules WHERE user_uid = ? AND visible = 1 ORDER BY datetime DESC`,
-    req.userId,
+    `SELECT uid, title, description, location, datetime, status, created_at FROM schedules WHERE user_uid = ? AND visible = 1 ORDER BY datetime ASC ;
+    SELECT COUNT(*) AS 'statistic' FROM schedules WHERE status != 'ONGOING' AND user_uid = ?
+    UNION
+    SELECT COUNT(*) FROM schedules WHERE status = 'DONE' AND user_uid = ?
+    UNION
+    SELECT COUNT(*) FROM schedules WHERE status = 'DROP' AND user_uid = ?`,
+    [req.userId, req.userId, req.userId, req.userId],
     (err, data) => {
-      console.log(err);
       if (err)
         return res
           .status(500)
@@ -80,14 +84,18 @@ router.post('/show', verifyToken, (req, res) => {
         return res.status(404).send('There is no data');
       // res.status(200).send(data);
       let result = { schedule: [], archive: [] };
-      for (let d of data) {
+      for (let d of data[0]) {
         if (d.status === 'ONGOING') {
           result.schedule.push(d);
         } else {
           result.archive.push(d);
         }
       }
-      res.status(200).send(result);
+      const stat = data[1].map(d => {
+        return d.statistic;
+      });
+      // console.log(stat);
+      res.status(200).send({ result, stat });
     }
   );
 });
@@ -96,7 +104,7 @@ router.post('/show', verifyToken, (req, res) => {
 router.post('/delete', verifyToken, (req, res) => {
   //request : uid
   db.query(
-    'UPDATE schedule SET visible = 0 WHERE uid = ?',
+    'UPDATE schedules SET visible = 0 WHERE uid = ?',
     req.body.uid,
     (err, result) => {
       if (err) {

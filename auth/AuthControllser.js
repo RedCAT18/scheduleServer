@@ -47,13 +47,11 @@ router.post('/register', (req, res) => {
         const token = jwt.sign({ id: uid }, config.secret, {
           expiresIn: 86400
         });
-        res
-          .status(200)
-          .send({
-            auth: true,
-            token: token,
-            user: { name: req.body.name, email: req.body.email, uid: uid }
-          });
+        res.status(200).send({
+          auth: true,
+          token: token,
+          user: { name: req.body.name, email: req.body.email, uid: uid }
+        });
       }
     );
   } catch (err) {
@@ -65,7 +63,7 @@ router.post('/register', (req, res) => {
 });
 
 router.post('/login', (req, res) => {
-  // console.log(req.body);
+  console.log(req.body);
   db.query(
     'SELECT id, email, name, password, uid FROM users WHERE email = ? LIMIT 1',
     req.body.email,
@@ -92,17 +90,43 @@ router.post('/login', (req, res) => {
   );
 });
 
-router.get('/me', verifyToken, (req, res) => {
-  console.log(req.body);
-  db.query(
-    'SELECT uid, email, name FROM users WHERE uid = ? LIMIT 1',
-    req.userId,
-    (err, user) => {
-      if (err)
-        return res.status(500).send('There was a problem finding the user.');
-      if (!user) return res.status(404).send('No user found.');
-      res.status(200).send(user);
+router.post('/update', verifyToken, (req, res) => {
+  //change included password
+
+  if (req.userId === req.body.uid) {
+    if (req.body.password) {
+      const hashedPassword = bcrypt.hashSync(req.body.password, 8);
+      db.query(
+        'UPDATE users SET email = ?, name = ?, password = ?, updated_at = NOW() WHERE uid = ?',
+        [req.body.email, req.body.name, hashedPassword, req.body.uid],
+        (err, result) => {
+          console.log(result);
+          if (err)
+            return res.status(500).send('Sorry, tere is a prblem from server.');
+          if (!result)
+            return res.status(404).send('Cannot find your information');
+
+          res.status(200).send(result);
+        }
+      );
+    } else {
+      console.log(req.body.name, req.body.email, req.body.uid);
+      db.query(
+        'UPDATE users SET email = ?, name = ?, updated_at = NOW() WHERE uid = ?',
+        [req.body.email, req.body.name, req.body.uid],
+        (err, result) => {
+          console.log(result);
+          if (err)
+            return res.status(500).send('Sorry, tere is a prblem from server.');
+          if (!result)
+            return res.status(404).send('Cannot find your information');
+          res.status(200).send(result);
+        }
+      );
     }
-  );
+  } else {
+    res.status(401).send('Update request rejected: Unauthorized User.');
+  }
 });
+
 module.exports = router;
