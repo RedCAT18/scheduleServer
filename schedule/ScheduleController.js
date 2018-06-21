@@ -5,6 +5,7 @@ import { v1 as uuidv1 } from 'uuid';
 import db from '../db';
 import config from '../config';
 import verifyToken from '../auth/verifyToken';
+import checkSchedules from './checking';
 
 const router = express.Router();
 
@@ -67,14 +68,16 @@ router.post('/save', verifyToken, (req, res) => {
 
 //show all schedule/archive of specific user
 router.get('/show', verifyToken, (req, res) => {
+  checkSchedules(req.userId);
   db.query(
-    `SELECT uid, title, description, location, datetime, status, created_at FROM schedules WHERE user_uid = ? AND visible = 1 ORDER BY datetime ASC ;
+    `UPDATE schedules SET status = 'DROP' WHERE datetime < NOW() AND datetime != '' AND status = 'ONGOING' AND user_uid = ?;
+    SELECT uid, title, description, location, datetime, status, created_at FROM schedules WHERE user_uid = ? AND visible = 1 ORDER BY datetime ASC ;
     SELECT COUNT(*) AS 'statistic' FROM schedules WHERE status != 'ONGOING' AND user_uid = ?
     UNION
     SELECT COUNT(*) FROM schedules WHERE status = 'DONE' AND user_uid = ?
     UNION
     SELECT COUNT(*) FROM schedules WHERE status = 'DROP' AND user_uid = ?`,
-    [req.userId, req.userId, req.userId, req.userId],
+    [req.userId, req.userId, req.userId, req.userId, req.userId],
     (err, data) => {
       if (err)
         return res
@@ -82,20 +85,27 @@ router.get('/show', verifyToken, (req, res) => {
           .send("Sorry, there's a problem to find schedule data.");
       if (!data || data.length === 0)
         return res.status(404).send('There is no data');
-      // res.status(200).send(data);
+
+      let checkingMessage = '';
+      if (data[0].affectedRows !== 0) {
+        checkingMessage = `Oops, Your ${
+          result.affectedRows
+        } schedules are dropped for passing the date where you set. :/`;
+      }
+      checkingMessage = null;
+
       let result = { schedule: [], archive: [] };
-      for (let d of data[0]) {
+      for (let d of data[1]) {
         if (d.status === 'ONGOING') {
           result.schedule.push(d);
         } else {
           result.archive.push(d);
         }
       }
-      const stat = data[1].map(d => {
+      const stat = data[2].map(d => {
         return d.statistic;
       });
-      // console.log(stat);
-      res.status(200).send({ result, stat });
+      res.status(200).send({ checkingMessage, result, stat });
     }
   );
 });
