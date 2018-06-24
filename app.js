@@ -11,6 +11,9 @@ app.use('/api/auth', AuthController);
 import ScheduleController from './schedule/ScheduleController';
 app.use('/api/schedule', ScheduleController);
 
+import AdminController from './admin/AdminController';
+app.use('/api/admin', AdminController);
+
 const server = app.listen(port, () => {
   console.log(`Server listening on port ${port}.`);
 });
