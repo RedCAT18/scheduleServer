@@ -85,14 +85,15 @@ router.get('/show', verifyToken, (req, res) => {
           .send("Sorry, there's a problem to find schedule data.");
       if (!data || data.length === 0)
         return res.status(404).send('There is no data');
-
+      // console.log(data[0]);
       let checkingMessage = '';
       if (data[0].affectedRows !== 0) {
         checkingMessage = `Oops, Your ${
-          result.affectedRows
+          data[0].affectedRows
         } schedules are dropped for passing the date where you set. :/`;
+      } else {
+        checkingMessage = null;
       }
-      checkingMessage = null;
 
       let result = { schedule: [], archive: [] };
       for (let d of data[1]) {
