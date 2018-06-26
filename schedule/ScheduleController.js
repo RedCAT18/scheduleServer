@@ -114,62 +114,16 @@ router.get('/show', verifyToken, (req, res) => {
 //pagination for infinite loading
 
 router.get('/show/:page/:type', verifyToken, (req, res) => {
-  console.log(req.params);
   let limit = 10; //numer of records per page
   let page = req.params.page;
-  let type = req.params.type;
+  let type = req.params.type === 'Schedule' ? '=' : '!=';
   let offset = limit * (page - 1);
   if (page === '1') {
     db.query(
-      `SELECT uid, title, description, location, datetime, status, created_at FROM schedules WHERE user_uid = ? AND status = 'ONGOING' AND visible = 1 ORDER BY datetime ASC LIMIT ? OFFSET ? ;
-      SELECT uid, title, description, location, datetime, status, created_at FROM schedules WHERE user_uid = ? AND status != 'ONGOING' AND visible = 1 ORDER BY datetime ASC LIMIT ? OFFSET ? ;
-      SELECT COUNT(*) AS 'statistic' FROM schedules WHERE status != 'ONGOING' AND user_uid = ?
-      UNION
-      SELECT COUNT(*) FROM schedules WHERE status = 'DONE' AND user_uid = ?
-      UNION
-      SELECT COUNT(*) FROM schedules WHERE status = 'DROP' AND user_uid = ?`,
-      [
-        req.userId,
-        limit,
-        offset,
-        req.userId,
-        limit,
-        offset,
-        req.userId,
-        req.userId,
-        req.userId
-      ],
-      (err, data) => {
-        if (err)
-          return res
-            .status(500)
-            .send("Sorry, there's a problem to find schedule data.");
-        if (!data || data.length === 0)
-          return res.status(404).send('There is no data');
-        // res.status(200).send(data);
-        console.log(data);
-        let result = { schedule: [], archive: [] };
-        // for (let d of data[0]) {
-        //   if (d.status === 'ONGOING') {
-        //     result.schedule.push(d);
-        //   } else {
-        //     result.archive.push(d);
-        //   }
-        // }
-        result.schedule = data[0];
-        result.archive = data[1];
-        const stat = data[2].map(d => {
-          return d.statistic;
-        });
-        // console.log(stat);
-        res.status(200).send({ result, stat, page });
-      }
-    );
-  } else {
-    //1페이지 이상은 schedule과 archive에 따라 다르게 로딩 (인피니트 스크롤 이용)
-    db.query(
-      'SELECT uid, title, description, location, datetime, status, created_at FROM schedules WHERE user_uid = ? AND visible = 1 ORDER BY datetime ASC LIMIT ? OFFSET ?',
-      [req.userId, limit, offset],
+      `SELECT count(*) as amount FROM schedules WHERE status = 'ONGOING' AND user_uid= ? AND visible = 1 ORDER BY datetime ASC ;
+    SELECT count(*) as amount FROM schedules WHERE status != 'ONGOING' AND user_uid= ? AND visible = 1 ORDER BY datetime ASC
+    `,
+      [req.userId, req.userId],
       (err, data) => {
         if (err)
           return res
@@ -177,6 +131,81 @@ router.get('/show/:page/:type', verifyToken, (req, res) => {
             .send(`Sorry, there's a problem to find schedule data.`);
         if (!data || data.length === 0)
           return res.status(404).send(`There is no data.`);
+        let totalSchedulePages = Math.ceil(data[0][0].amount / limit);
+        let totalArchivePages = Math.ceil(data[1][0].amount / limit);
+
+        db.query(
+          `UPDATE schedules SET status = 'DROP' WHERE datetime < NOW() AND datetime != '' AND status = 'ONGOING' AND user_uid = ? ;
+          SELECT uid, title, description, location, datetime, status, created_at FROM schedules WHERE user_uid = ? AND status = 'ONGOING' AND visible = 1 ORDER BY datetime ASC LIMIT ? OFFSET ? ;
+          SELECT uid, title, description, location, datetime, status, created_at FROM schedules WHERE user_uid = ? AND status != 'ONGOING' AND visible = 1 ORDER BY datetime ASC LIMIT ? OFFSET ? ;
+          SELECT COUNT(*) AS 'statistic' FROM schedules WHERE status != 'ONGOING' AND user_uid = ?
+          UNION
+          SELECT COUNT(*) FROM schedules WHERE status = 'DONE' AND user_uid = ?
+          UNION
+          SELECT COUNT(*) FROM schedules WHERE status = 'DROP' AND user_uid = ?`,
+          [
+            req.userId,
+            req.userId,
+            limit,
+            offset,
+            req.userId,
+            limit,
+            offset,
+            req.userId,
+            req.userId,
+            req.userId
+          ],
+          (err, data) => {
+            if (err)
+              return res
+                .status(500)
+                .send("Sorry, there's a problem to find schedule data.");
+            if (!data || data.length === 0)
+              return res.status(404).send('There is no data');
+
+            let checkingMessage = '';
+            if (data[0].affectedRows !== 0) {
+              checkingMessage = `Oops, Your ${
+                data[0].affectedRows
+              } schedules are dropped for passing the date when you set. :/`;
+            } else {
+              checkingMessage = null;
+            }
+
+            let result = { schedule: [], archive: [] };
+            result.schedule = data[1];
+            result.archive = data[2];
+            const stat = data[3].map(d => {
+              return d.statistic;
+            });
+            // console.log(stat);
+            res.status(200).send({
+              checkingMessage,
+              result,
+              stat,
+              totalSchedulePages,
+              totalArchivePages
+            });
+          }
+        );
+      }
+    );
+  } else {
+    //1페이지 이상은 schedule과 archive에 따라 다르게 로딩 (인피니트 스크롤 이용)
+
+    db.query(
+      `SELECT uid, title, description, location, datetime, status, created_at FROM schedules WHERE user_uid = ? AND status ${type} 'ONGOING' AND visible = 1 ORDER BY datetime ASC LIMIT ? OFFSET ?`,
+      [req.userId, limit, offset],
+      (err, data) => {
+        // console.log(data);
+        if (err)
+          return res
+            .status(500)
+            .send(`Sorry, there's a problem to find schedule data.`);
+        if (!data || data.length === 0)
+          return res.status(404).send(`There is no data.`);
+        const screen = req.params.type;
+        res.status(200).send({ data, screen, page });
       }
     );
   }
